@@ -1,0 +1,547 @@
+[workspace.dependencies]
+# Error handling
+anyhow = "1"
+thiserror = "2"
+# Serde
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+# Web
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+bytes = "1"
+http = "1"
+# Auth primitives
+jsonwebtoken = "9"
+argon2 = "0.5"
+rand = "0.8"
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+# Database
+sqlx = { version = "0.8", default-features = false, features = [
+    "macros",
+    "runtime-tokio-native-tls",
+    "chrono",
+] }
+# Hashing
+sha2 = "0.10"
+sha3 = "0.10"
+sha1 = "0.10"
+# Encoding
+base64 = "0.22"
+# Config
+dotenvy = "0.15"
+# Cache
+dashmap = "6"
+# Proc-macro utilities
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+heck = "0.5"
+# Hashing / checksums
+crc32fast = "1"
+# Encryption
+aes-gcm = "0.10"
+# Async trait helpers
+async-trait = "0.1"
+# HMAC
+hmac = "0.12"
+# Password hashing
+bcrypt = "0.19"
+scrypt = { version = "0.11", features = ["password-hash"] }
+password-hash = { version = "0.5", features = ["rand_core", "std"] }
+# MIME type detection
+mime_guess = "2"
+# CLI
+clap = { version = "4", features = ["derive", "cargo"] }
+# Testing
+insta = { version = "1", features = ["json"] }
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+
+[package]
+name = "rok-encrypt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "AES-256-GCM encryption façade with purpose-bound and expiring tokens for the rok ecosystem"
+keywords = ["encryption", "aes", "hmac", "tokens", "rok"]
+categories = ["cryptography", "web-programming"]
+
+[dependencies]
+thiserror   = { workspace = true }
+aes-gcm     = { workspace = true }
+sha2        = { workspace = true }
+hmac        = { workspace = true }
+base64      = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+rand        = { workspace = true }
+chrono      = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+# rok-encrypt
+
+> AES-256-GCM authenticated encryption with purpose-bound tokens for Axum applications.
+
+Part of the [Rok Framework](https://rok.rs) — a full-stack Rust web framework built on Axum 0.8 and SQLx 0.8.
+
+[![crates.io](https://img.shields.io/crates/v/rok-encrypt.svg)](https://crates.io/crates/rok-encrypt)
+[![docs.rs](https://img.shields.io/docsrs/rok-encrypt)](https://docs.rs/rok-encrypt)
+[![MIT](https://img.shields.io/crates/l/rok-encrypt)](LICENSE)
+
+## Features
+
+- AES-256-GCM authenticated encryption — integrity and confidentiality in one pass
+- Purpose-bound tokens prevent cross-purpose token misuse (e.g. password-reset token used for email-verify)
+- AEAD nonce auto-generation — a fresh 96-bit nonce is generated per encryption call
+- HKDF-SHA256 key derivation — derive purpose-specific sub-keys from one master key
+- Base64url-encoded output — safe for URLs, headers, and JSON without extra encoding
+- HMAC-SHA256 signing for short-lived signed tokens with expiry
+- Environment-driven configuration with `ENCRYPT_KEY` support
+- `#[zeroize]` on drop — key material is cleared from memory on drop
+
+## Installation
+
+```toml
+[dependencies]
+rok-encrypt = "0.2"
+```
+
+## Quick Start
+
+```rust
+use rok_encrypt::{Encrypter, EncryptConfig};
+
+// Initialize from environment (reads ENCRYPT_KEY)
+let enc = Encrypter::from_env()?;
+
+// Encrypt a value bound to a purpose — prevents token reuse across contexts
+let token = enc.encrypt("user:42", "password-reset")?;
+// → base64url(nonce || ciphertext || tag) with purpose mixed into the AEAD AD
+
+// Decrypt — must supply the same purpose or decryption fails
+let plaintext = enc.decrypt(&token, "password-reset")?;
+assert_eq!(plaintext, "user:42");
+
+// Wrong purpose → Err(DecryptError::AeadFailure)
+let wrong = enc.decrypt(&token, "email-verify");
+assert!(wrong.is_err());
+
+// Short-lived signed token (e.g. for magic links, email verification)
+let signed = enc.signed_token("user_id:42", 3600)?; // expires in 1 hour
+let payload = enc.verify_token(&signed)?;            // Err if expired or tampered
+```
+
+## Core API
+
+### `Encrypter`
+
+```rust
+impl Encrypter {
+    /// Build from an explicit 32-byte key.
+    pub fn new(config: EncryptConfig) -> Self;
+
+    /// Build from the `ENCRYPT_KEY` environment variable (32 hex chars).
+    pub fn from_env() -> Result<Self, EncryptError>;
+
+    /// Encrypt `value` with `purpose` mixed into the AEAD additional data.
+    pub fn encrypt(&self, value: &str, purpose: &str) -> Result<String, EncryptError>;
+
+    /// Decrypt a token, verifying the purpose matches what was used at encryption time.
+    pub fn decrypt(&self, token: &str, purpose: &str) -> Result<String, EncryptError>;
+
+    /// Produce a HMAC-SHA256 signed, base64url-encoded token with TTL.
+    pub fn signed_token(&self, payload: &str, ttl_secs: u64) -> Result<String, EncryptError>;
+
+    /// Verify a signed token; returns the original payload string.
+    pub fn verify_token(&self, token: &str) -> Result<String, EncryptError>;
+}
+```
+
+### `Signer`
+
+```rust
+use rok_encrypt::Signer;
+
+let signer = Signer::new("my-hmac-secret");
+let signature = signer.sign("arbitrary-payload");
+signer.verify("arbitrary-payload", &signature)?; // Err if tampered
+```
+
+### `EncryptConfig`
+
+```rust
+let config = EncryptConfig {
+    key: hex::decode("0123456789abcdef0123456789abcdef01234567890abcdef0123456789abcdef")?,
+};
+let enc = Encrypter::new(config);
+```
+
+## Feature Flags
+
+| Flag | Description | Default |
+|---|---|---|
+| `zeroize` | Zero key material on drop via the `zeroize` crate | enabled |
+| `serde` | `Serialize`/`Deserialize` for `EncryptConfig` | enabled |
+
+## Integration
+
+`rok-encrypt` is used internally by `rok-auth` to generate password-reset links, magic-link
+tokens, and email-verification URLs. Any token produced by `rok-auth` is purpose-bound so a
+reset-password token cannot be replayed as an email-verification token even if intercepted.
+
+```rust
+// rok-auth internally does something like this:
+use rok_encrypt::Encrypter;
+
+let enc: Encrypter = state.encrypter.clone();
+let token = enc.encrypt(&format!("user:{}", user.id), "password-reset")?;
+let link  = format!("https://example.com/reset?token={token}");
+mailer.send(PasswordResetMail { to: user.email, link }).await?;
+```
+
+You can use `rok-encrypt` directly to encrypt sensitive model fields (e.g. OAuth tokens,
+API secrets) before persisting them to the database, and decrypt them on read.
+
+## License
+
+MIT
+
+
+[package]
+name = "rok-hash"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Password hashing façade with Argon2, Bcrypt, and Scrypt drivers for the rok ecosystem"
+keywords = ["password", "hashing", "argon2", "bcrypt", "rok"]
+categories = ["authentication", "cryptography"]
+
+[dependencies]
+thiserror     = { workspace = true }
+argon2        = { workspace = true }
+bcrypt        = { workspace = true }
+scrypt        = { workspace = true }
+password-hash = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+# rok-hash
+
+> Password hashing with Argon2id, Bcrypt, and Scrypt drivers plus SHA-2/SHA-3 utilities.
+
+Part of the [Rok Framework](https://rok.rs) — a full-stack Rust web framework built on Axum 0.8 and SQLx 0.8.
+
+[![crates.io](https://img.shields.io/crates/v/rok-hash.svg)](https://crates.io/crates/rok-hash)
+[![docs.rs](https://img.shields.io/docsrs/rok-hash)](https://docs.rs/rok-hash)
+[![MIT](https://img.shields.io/crates/l/rok-hash)](LICENSE)
+
+## Features
+
+- Argon2id (default) — OWASP-recommended memory-hard password hashing
+- Bcrypt and Scrypt drivers selectable at runtime via `HashDriver` enum
+- Async-safe — hashing runs on `tokio::task::spawn_blocking` to avoid blocking the runtime
+- Configurable cost parameters for each algorithm
+- `Hash::make` / `Hash::check` ergonomic facade — no boilerplate
+- SHA-2 and SHA-3 helpers for non-password digests and HMAC-SHA256
+- `AuthFinder` trait for drop-in integration with `rok-auth` credential verification
+- Constant-time comparison guards against timing side-channels
+
+## Installation
+
+```toml
+[dependencies]
+rok-hash = "0.2"
+```
+
+To enable Bcrypt or Scrypt alongside Argon2id:
+
+```toml
+rok-hash = { version = "0.2", features = ["bcrypt", "scrypt"] }
+```
+
+## Quick Start
+
+```rust
+use rok_hash::{Hash, HashConfig, HashDriver};
+
+// Argon2id with defaults (memory=65536 KiB, iterations=3, parallelism=4)
+let config = HashConfig::argon2id();
+let hasher = Hash::new(config);
+
+// Hash a password — async because it runs on a blocking thread
+let hash: String = hasher.make("correct-horse-battery-staple").await?;
+
+// Verify — returns Ok(true) or Ok(false); never panics on bad input
+let valid = hasher.check("correct-horse-battery-staple", &hash).await?;
+assert!(valid);
+
+// Bcrypt with cost factor 12
+let bcrypt_hasher = Hash::new(HashConfig::bcrypt(12));
+let hash = bcrypt_hasher.make("my-password").await?;
+
+// Scrypt with RFC 7914 recommended parameters
+let scrypt_hasher = Hash::new(HashConfig::scrypt());
+let hash = scrypt_hasher.make("my-password").await?;
+```
+
+## Core API
+
+### `Hash`
+
+```rust
+impl Hash {
+    pub fn new(config: HashConfig) -> Self;
+
+    /// Hash a password using the configured driver. Non-blocking (spawns blocking task).
+    pub async fn make(&self, password: &str) -> Result<String, HashError>;
+
+    /// Verify a plaintext password against a stored hash. Returns `Ok(false)` on mismatch.
+    pub async fn check(&self, password: &str, hash: &str) -> Result<bool, HashError>;
+
+    /// Verify or return `Err(HashError::InvalidCredentials)` — useful in auth handlers.
+    pub async fn verify(&self, password: &str, hash: &str) -> Result<(), HashError>;
+}
+```
+
+### `HashConfig`
+
+```rust
+HashConfig::argon2id()          // OWASP-recommended defaults
+HashConfig::argon2id_custom(ArgonParams { m_cost: 131072, t_cost: 4, p_cost: 4 })
+HashConfig::bcrypt(12)          // cost factor 12 (range 4–31)
+HashConfig::scrypt()            // N=32768, r=8, p=1
+```
+
+### SHA utilities
+
+```rust
+use rok_hash::sha;
+
+let hex_digest = sha::sha256("data");          // "3a7bd3e2..."
+let hex_digest = sha::sha512("data");
+let hex_digest = sha::sha3_256("data");
+let mac        = sha::hmac_sha256("secret-key", "data-to-sign");
+```
+
+## Feature Flags
+
+| Flag | Description | Default |
+|---|---|---|
+| `argon2` | Argon2id hashing via the `argon2` crate | enabled |
+| `bcrypt` | Bcrypt hashing via the `bcrypt` crate | disabled |
+| `scrypt` | Scrypt hashing via the `scrypt` crate | disabled |
+| `sha` | SHA-2 / SHA-3 digest helpers | enabled |
+
+## Integration
+
+`rok-hash` is a dependency of `rok-auth`. When you configure `rok-auth`, the hash driver
+is passed through `AuthConfig` so the same driver is used everywhere — registration, login,
+password resets, and the `rok-bouncer` credential check.
+
+```rust
+use rok_auth::AuthConfig;
+use rok_hash::{Hash, HashConfig};
+
+let auth_config = AuthConfig {
+    hasher: Hash::new(HashConfig::argon2id()),
+    // ...other fields
+};
+
+// rok-auth calls hasher.make() on registration and hasher.verify() on login
+// You never call rok-hash directly in most applications
+```
+
+For applications that store hashed values outside of the auth flow (e.g. hashed API webhook
+secrets), `rok-hash` can be used standalone — just call `Hash::make` and store the result.
+
+## License
+
+MIT
+
+[package]
+name = "rok-ids"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "CUID2, ULID, UUID v7, Snowflake, and NanoID generators for the rok ecosystem"
+keywords = ["id", "ulid", "cuid2", "snowflake", "nanoid"]
+categories = ["data-structures"]
+
+[dependencies]
+thiserror = { workspace = true }
+serde     = { workspace = true }
+rand      = { workspace = true }
+sha3      = { workspace = true }
+uuid      = { workspace = true, features = ["v7"] }
+sqlx      = { version = "0.8", optional = true, default-features = false }
+
+[features]
+default       = []
+sqlx-postgres = ["dep:sqlx", "sqlx/postgres", "sqlx/uuid"]
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+# rok-ids
+
+> Collision-resistant ID generators — CUID2, ULID, UUID v7, NanoID, and Snowflake.
+
+Part of the [Rok Framework](https://rok.rs) — a full-stack Rust web framework built on Axum 0.8 and SQLx 0.8.
+
+[![crates.io](https://img.shields.io/crates/v/rok-ids.svg)](https://crates.io/crates/rok-ids)
+[![docs.rs](https://img.shields.io/docsrs/rok-ids)](https://docs.rs/rok-ids)
+[![MIT](https://img.shields.io/crates/l/rok-ids)](LICENSE)
+
+## Features
+
+- CUID2 — secure, collision-resistant, URL-safe, 24-character default ID
+- ULID — lexicographically sortable, UUID-compatible, 26-character
+- UUID v7 — time-ordered UUID with millisecond precision (RFC 9562)
+- NanoID — compact 21-character URL-safe ID with configurable alphabet and length
+- Snowflake — 64-bit time-ordered integer ID for high-throughput distributed systems
+- All types implement `Display`, `FromStr`, `Serialize`, `Deserialize`
+- `sqlx::Type`, `Encode`, `Decode` for PostgreSQL — use as column types directly
+- `Ord` / `PartialOrd` for sortable types (ULID, UUID v7, Snowflake)
+
+## Installation
+
+```toml
+[dependencies]
+rok-ids = "0.2"
+```
+
+## Quick Start
+
+```rust
+use rok_ids::{Cuid2, Ulid, UuidV7, NanoId, Snowflake};
+
+let id = Cuid2::new();      // "clh3ov3o40000qzrm4h0gkjba"
+let id = Ulid::new();       // "01H2XCEJHE1MREEW0GXKNJ7SQ"
+let id = UuidV7::new();     // "018924f0-d2b7-7000-9e84-6f2e3a2a3d00"
+let id = NanoId::new();     // "V1StGXR8_Z5jdHi6B-myT"
+let id = Snowflake::new(1); // 7305763804012543000  (machine_id = 1)
+
+// All implement Display and Into<String>
+println!("Created record {}", Cuid2::new());
+
+// Parse from a string
+let id: Ulid = "01H2XCEJHE1MREEW0GXKNJ7SQ".parse()?;
+```
+
+## Core API
+
+### Using IDs as model primary keys
+
+```rust
+use rok_ids::Cuid2;
+use sqlx::FromRow;
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, FromRow, Serialize, Deserialize)]
+pub struct Post {
+    pub id:    Cuid2,       // TEXT column in PostgreSQL
+    pub title: String,
+    pub body:  String,
+}
+
+// Insert
+let id = Cuid2::new();
+sqlx::query("INSERT INTO posts (id, title, body) VALUES ($1, $2, $3)")
+    .bind(&id)
+    .bind(&post.title)
+    .bind(&post.body)
+    .execute(&pool)
+    .await?;
+```
+
+### NanoID with custom alphabet and length
+
+```rust
+use rok_ids::NanoId;
+
+let short = NanoId::with_length(10);                             // 10 chars, default alphabet
+let alpha  = NanoId::with_alphabet("ABCDEFGHIJKLMNOPQRSTUVWXYZ", 8); // 8 uppercase letters
+let slug   = NanoId::slug();                                     // lowercase + digits, 12 chars
+```
+
+### Snowflake with multiple machines
+
+```rust
+use rok_ids::Snowflake;
+
+// Each machine / pod gets a unique machine_id (0–1023)
+let machine_id: u16 = std::env::var("MACHINE_ID")?.parse()?;
+let id = Snowflake::new(machine_id);
+
+// Snowflake encodes: timestamp (41 bits) | machine_id (10 bits) | sequence (12 bits)
+let timestamp_ms = id.timestamp_ms();   // when the ID was generated
+let seq          = id.sequence();       // within-millisecond counter
+```
+
+### UUID v7
+
+```rust
+use rok_ids::UuidV7;
+
+let id = UuidV7::new();
+
+// Convert to/from standard uuid::Uuid
+let uuid: uuid::Uuid = id.into();
+let id: UuidV7 = uuid.try_into()?;
+
+// Database
+// UuidV7 maps to PostgreSQL's UUID type
+sqlx::query("INSERT INTO events (id) VALUES ($1)")
+    .bind(&id)
+    .execute(&pool)
+    .await?;
+```
+
+## Which ID to Use?
+
+| ID | Sortable | DB Column | Length | Best For |
+|---|---|---|---|---|
+| CUID2 | no | TEXT | 24 chars | Default — general purpose public IDs |
+| ULID | yes | TEXT / CHAR(26) | 26 chars | Time-ordered, Cassandra-style tables |
+| UUID v7 | yes | UUID | 36 chars | Standard UUID columns, time-ordered |
+| NanoID | no | TEXT | 21 chars | Short, URL-safe tokens |
+| Snowflake | yes | BIGINT | i64 | Ultra-high write throughput |
+
+## Feature Flags
+
+| Flag | Description | Default |
+|---|---|---|
+| `cuid2` | CUID2 generator | enabled |
+| `ulid` | ULID generator | enabled |
+| `uuid-v7` | UUID v7 generator | enabled |
+| `nanoid` | NanoID generator | enabled |
+| `snowflake` | Snowflake generator | disabled |
+| `sqlx-postgres` | SQLx PostgreSQL type impls | enabled |
+
+## Integration
+
+`rok-ids` types are used throughout the Rok ecosystem. `rok-orm` models default to
+`Cuid2` primary keys when the `--cuid` flag is passed to `rok make:model`. `rok-auth`
+uses `Cuid2` for personal access tokens and session IDs. `rok-queue` uses `Ulid` for
+job IDs to get chronological ordering within the jobs table without a sequence.
+
+## License
+
+MIT
