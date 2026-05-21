@@ -4,7 +4,7 @@ use std::str::FromStr;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::IdError;
+use super::IdError;
 
 pub const DEFAULT_ALPHABET: &[u8] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";

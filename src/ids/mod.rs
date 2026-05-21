@@ -81,7 +81,6 @@ mod tests {
 
     #[test]
     fn ulid_sorted_by_time() {
-        // Generate ULIDs with a small sleep to ensure different ms buckets
         let a = Ulid::generate();
         std::thread::sleep(std::time::Duration::from_millis(2));
         let b = Ulid::generate();

@@ -1,6 +1,8 @@
+#![cfg(feature = "encrypt")]
+
 use std::time::Duration;
 
-use rok_encrypt::{EncryptConfig, EncryptError, Encrypter, Signer};
+use rok_crypto::encrypt::{EncryptConfig, EncryptError, Encrypter, Signer};
 
 fn enc() -> Encrypter {
     Encrypter::from_config(EncryptConfig::new("test-secret-key"))
@@ -23,7 +25,6 @@ fn seal_produces_opaque_base64_token() {
         !token.contains("secret"),
         "plaintext must not appear in token"
     );
-    // URL-safe base64: only alphanumeric, - and _
     assert!(token
         .chars()
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
@@ -50,7 +51,6 @@ fn open_wrong_token_returns_error() {
 fn open_tampered_token_returns_error() {
     let e = enc();
     let mut token = e.seal("data");
-    // Flip the last character to tamper with the ciphertext/MAC.
     let last = token.pop().unwrap();
     token.push(if last == 'A' { 'B' } else { 'A' });
     assert!(e.open(&token).is_err());
@@ -84,7 +84,6 @@ fn open_for_wrong_purpose_returns_error() {
 
 #[test]
 fn open_without_purpose_on_purpose_bound_token_succeeds() {
-    // open() is purpose-agnostic — it just decrypts without checking purpose.
     let e = enc();
     let token = e.seal_for("pw-reset", "value");
     assert_eq!(e.open(&token).unwrap(), "value");
@@ -110,18 +109,10 @@ fn seal_expiring_valid_within_ttl() {
 #[test]
 fn seal_expiring_expired_returns_error() {
     let e = enc();
-    // TTL of 0 seconds → expires immediately (Utc::now() > expires_at by the time open() runs).
-    let token = e.seal_expiring("data", Duration::from_secs(0));
-    // The token has expires_at = now(), so after any delay it should be expired.
-    // We can't guarantee timing in a test, but with ttl=0 it will be expired or
-    // right at the boundary. Let's use a negative workaround: directly manipulate
-    // via seal_for_expiring with the same 0s logic and just assert it may expire.
-    // Instead, test that a token with a large TTL is valid (covers the happy path).
     let valid = e.seal_expiring("ok", Duration::from_secs(60));
     assert_eq!(e.open(&valid).unwrap(), "ok");
-    // The 0-TTL token may or may not be expired depending on execution speed;
-    // we accept either outcome.
-    let _ = e.open(&token); // just ensure it doesn't panic
+    let token = e.seal_expiring("data", Duration::from_secs(0));
+    let _ = e.open(&token);
 }
 
 #[test]
@@ -145,7 +136,6 @@ fn key_rotation_allows_decrypting_old_tokens() {
     let old_enc = Encrypter::from_config(EncryptConfig::new("old-secret"));
     let token = old_enc.seal("legacy data");
 
-    // New config with old key listed for fallback.
     let new_enc =
         Encrypter::from_config(EncryptConfig::new("new-secret").with_old_keys(["old-secret"]));
     assert_eq!(new_enc.open(&token).unwrap(), "legacy data");
@@ -157,7 +147,6 @@ fn key_rotation_new_tokens_use_new_key() {
         Encrypter::from_config(EncryptConfig::new("new-secret").with_old_keys(["old-secret"]));
     let token = new_enc.seal("fresh data");
 
-    // Old encrypter cannot decrypt a token made with the new key.
     let old_enc = Encrypter::from_config(EncryptConfig::new("old-secret"));
     assert!(old_enc.open(&token).is_err());
 }

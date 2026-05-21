@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::IdError;
+use super::IdError;
 
 const LENGTH: usize = 24;
 const ALPHABET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";

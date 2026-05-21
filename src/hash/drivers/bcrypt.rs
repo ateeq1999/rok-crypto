@@ -1,4 +1,4 @@
-use crate::{config::BcryptConfig, driver::HashDriver, HashError};
+use super::super::{config::BcryptConfig, driver::HashDriver, HashError};
 
 pub(crate) struct BcryptDriver {
     config: BcryptConfig,

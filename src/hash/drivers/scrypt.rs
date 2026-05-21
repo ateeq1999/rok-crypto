@@ -1,7 +1,7 @@
 use password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use scrypt::{Params, Scrypt};
 
-use crate::{config::ScryptConfig, driver::HashDriver, HashError};
+use super::super::{config::ScryptConfig, driver::HashDriver, HashError};
 
 pub(crate) struct ScryptDriver {
     config: ScryptConfig,

@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::IdError;
+use super::IdError;
 
 const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CROCKFORD_DECODE: [i8; 128] = build_decode_table();

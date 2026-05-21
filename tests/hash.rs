@@ -1,8 +1,16 @@
-use rok_hash::{Argon2Config, AuthFinder, BcryptConfig, Driver, HashConfig, Hasher, ScryptConfig};
+#[cfg(feature = "hash")]
+#[cfg(feature = "hash")]
+use rok_crypto::hash::{Argon2Config, AuthFinder, Driver, HashConfig, Hasher};
+
+#[cfg(feature = "bcrypt")]
+use rok_crypto::hash::BcryptConfig;
+
+#[cfg(feature = "scrypt")]
+use rok_crypto::hash::ScryptConfig;
 
 // ── fast test configs ─────────────────────────────────────────────────────────
-// Use minimum secure params to keep tests fast.
 
+#[cfg(feature = "argon2")]
 fn argon2_config() -> HashConfig {
     HashConfig {
         driver: Driver::Argon2,
@@ -15,14 +23,16 @@ fn argon2_config() -> HashConfig {
     }
 }
 
+#[cfg(feature = "bcrypt")]
 fn bcrypt_config() -> HashConfig {
     HashConfig {
         driver: Driver::Bcrypt,
-        bcrypt: BcryptConfig { cost: 4 }, // minimum accepted by bcrypt
+        bcrypt: BcryptConfig { cost: 4 },
         ..HashConfig::default()
     }
 }
 
+#[cfg(feature = "scrypt")]
 fn scrypt_config() -> HashConfig {
     HashConfig {
         driver: Driver::Scrypt,
@@ -30,17 +40,19 @@ fn scrypt_config() -> HashConfig {
             log_n: 4,
             r: 8,
             p: 1,
-        }, // very low for tests
+        },
         ..HashConfig::default()
     }
 }
 
 // ── AuthFinder test model ─────────────────────────────────────────────────────
 
+#[cfg(feature = "hash")]
 struct FakeUser {
     password_hash: String,
 }
 
+#[cfg(feature = "hash")]
 impl AuthFinder for FakeUser {
     fn get_auth_password(&self) -> &str {
         &self.password_hash
@@ -49,6 +61,7 @@ impl AuthFinder for FakeUser {
 
 // ── Argon2 ────────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "argon2")]
 #[test]
 fn argon2_make_and_verify() {
     let h = Hasher::from_config(argon2_config());
@@ -58,6 +71,7 @@ fn argon2_make_and_verify() {
     assert!(!h.verify("wrong", &hash).unwrap());
 }
 
+#[cfg(feature = "argon2")]
 #[test]
 fn argon2_does_not_need_rehash_with_same_params() {
     let h = Hasher::from_config(argon2_config());
@@ -65,9 +79,10 @@ fn argon2_does_not_need_rehash_with_same_params() {
     assert!(!h.needs_rehash(&hash));
 }
 
+#[cfg(feature = "argon2")]
 #[test]
 fn argon2_needs_rehash_after_config_upgrade() {
-    let low = Hasher::from_config(argon2_config()); // memory_kib = 1024
+    let low = Hasher::from_config(argon2_config());
     let hash = low.make("pass").unwrap();
 
     let high = Hasher::from_config(HashConfig {
@@ -82,12 +97,14 @@ fn argon2_needs_rehash_after_config_upgrade() {
     assert!(high.needs_rehash(&hash));
 }
 
+#[cfg(feature = "argon2")]
 #[test]
 fn argon2_needs_rehash_with_invalid_format() {
     let h = Hasher::from_config(argon2_config());
     assert!(h.needs_rehash("not-a-valid-hash"));
 }
 
+#[cfg(feature = "argon2")]
 #[test]
 fn argon2_unique_hashes_per_call() {
     let h = Hasher::from_config(argon2_config());
@@ -98,6 +115,7 @@ fn argon2_unique_hashes_per_call() {
 
 // ── Bcrypt ────────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "bcrypt")]
 #[test]
 fn bcrypt_make_and_verify() {
     let h = Hasher::from_config(bcrypt_config());
@@ -107,6 +125,7 @@ fn bcrypt_make_and_verify() {
     assert!(!h.verify("wrong", &hash).unwrap());
 }
 
+#[cfg(feature = "bcrypt")]
 #[test]
 fn bcrypt_does_not_need_rehash_with_same_cost() {
     let h = Hasher::from_config(bcrypt_config());
@@ -114,9 +133,10 @@ fn bcrypt_does_not_need_rehash_with_same_cost() {
     assert!(!h.needs_rehash(&hash));
 }
 
+#[cfg(feature = "bcrypt")]
 #[test]
 fn bcrypt_needs_rehash_after_cost_increase() {
-    let low = Hasher::from_config(bcrypt_config()); // cost 4
+    let low = Hasher::from_config(bcrypt_config());
     let hash = low.make("pass").unwrap();
 
     let high = Hasher::from_config(HashConfig {
@@ -127,6 +147,7 @@ fn bcrypt_needs_rehash_after_cost_increase() {
     assert!(high.needs_rehash(&hash));
 }
 
+#[cfg(feature = "bcrypt")]
 #[test]
 fn bcrypt_unique_hashes_per_call() {
     let h = Hasher::from_config(bcrypt_config());
@@ -137,6 +158,7 @@ fn bcrypt_unique_hashes_per_call() {
 
 // ── Scrypt ────────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "scrypt")]
 #[test]
 fn scrypt_make_and_verify() {
     let h = Hasher::from_config(scrypt_config());
@@ -146,6 +168,7 @@ fn scrypt_make_and_verify() {
     assert!(!h.verify("wrong", &hash).unwrap());
 }
 
+#[cfg(feature = "scrypt")]
 #[test]
 fn scrypt_does_not_need_rehash_with_same_params() {
     let h = Hasher::from_config(scrypt_config());
@@ -153,9 +176,10 @@ fn scrypt_does_not_need_rehash_with_same_params() {
     assert!(!h.needs_rehash(&hash));
 }
 
+#[cfg(feature = "scrypt")]
 #[test]
 fn scrypt_needs_rehash_after_log_n_increase() {
-    let low = Hasher::from_config(scrypt_config()); // log_n 4
+    let low = Hasher::from_config(scrypt_config());
     let hash = low.make("pass").unwrap();
 
     let high = Hasher::from_config(HashConfig {
@@ -172,6 +196,7 @@ fn scrypt_needs_rehash_after_log_n_increase() {
 
 // ── Default config ────────────────────────────────────────────────────────────
 
+#[cfg(feature = "hash")]
 #[test]
 fn default_config_uses_argon2() {
     let h = Hasher::from_config(HashConfig::default());
@@ -185,6 +210,7 @@ fn default_config_uses_argon2() {
 
 // ── AuthFinder helpers ────────────────────────────────────────────────────────
 
+#[cfg(feature = "hash")]
 #[test]
 fn verify_for_and_needs_rehash_for() {
     let h = Hasher::from_config(argon2_config());
@@ -200,9 +226,10 @@ fn verify_for_and_needs_rehash_for() {
 
 // ── Hasher::clone ─────────────────────────────────────────────────────────────
 
+#[cfg(feature = "hash")]
 #[test]
 fn hasher_is_clone() {
-    let h1 = Hasher::from_config(bcrypt_config());
+    let h1 = Hasher::from_config(argon2_config());
     let h2 = h1.clone();
     let hash = h1.make("pw").unwrap();
     assert!(h2.verify("pw", &hash).unwrap());

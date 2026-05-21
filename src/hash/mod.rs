@@ -11,7 +11,12 @@ pub use error::HashError;
 use std::sync::Arc;
 
 use driver::HashDriver;
-use drivers::{argon2::Argon2Driver, bcrypt::BcryptDriver, scrypt::ScryptDriver};
+#[cfg(feature = "argon2")]
+use drivers::argon2::Argon2Driver;
+#[cfg(feature = "bcrypt")]
+use drivers::bcrypt::BcryptDriver;
+#[cfg(feature = "scrypt")]
+use drivers::scrypt::ScryptDriver;
 
 /// Password-hashing façade with pluggable drivers.
 ///
@@ -20,7 +25,7 @@ use drivers::{argon2::Argon2Driver, bcrypt::BcryptDriver, scrypt::ScryptDriver};
 /// # Example
 ///
 /// ```rust,ignore
-/// use rok_hash::{HashConfig, Hasher};
+/// use rok_crypto::hash::{HashConfig, Hasher};
 ///
 /// let hasher = Hasher::from_config(HashConfig::default());
 ///
@@ -35,11 +40,22 @@ pub struct Hasher {
 impl Hasher {
     /// Create a `Hasher` from `config`, selecting and initialising the
     /// appropriate driver.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `config.driver` is not enabled via the corresponding crate
+    /// feature (e.g., selecting `Driver::Bcrypt` without the `bcrypt` feature).
     pub fn from_config(config: HashConfig) -> Self {
         let inner: Arc<dyn HashDriver> = match config.driver {
             Driver::Argon2 => Arc::new(Argon2Driver::new(config.argon2)),
+            #[cfg(feature = "bcrypt")]
             Driver::Bcrypt => Arc::new(BcryptDriver::new(config.bcrypt)),
+            #[cfg(not(feature = "bcrypt"))]
+            Driver::Bcrypt => panic!("Bcrypt support not enabled (enable feature 'bcrypt')"),
+            #[cfg(feature = "scrypt")]
             Driver::Scrypt => Arc::new(ScryptDriver::new(config.scrypt)),
+            #[cfg(not(feature = "scrypt"))]
+            Driver::Scrypt => panic!("Scrypt support not enabled (enable feature 'scrypt')"),
         };
         Self { inner }
     }

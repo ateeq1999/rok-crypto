@@ -2,7 +2,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use crate::config::EncryptConfig;
+use super::config::EncryptConfig;
 
 type HmacSha256 = Hmac<Sha256>;
 

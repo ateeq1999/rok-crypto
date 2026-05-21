@@ -1,7 +1,7 @@
 use argon2::{Algorithm, Argon2, Params, Version};
 use password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 
-use crate::{config::Argon2Config, driver::HashDriver, HashError};
+use super::super::{config::Argon2Config, driver::HashDriver, HashError};
 
 pub(crate) struct Argon2Driver {
     config: Argon2Config,

@@ -51,7 +51,7 @@ fn derive_key(secret: &str) -> [u8; 32] {
 ///
 /// ```rust,ignore
 /// use std::time::Duration;
-/// use rok_encrypt::{EncryptConfig, Encrypter};
+/// use rok_crypto::encrypt::{EncryptConfig, Encrypter};
 ///
 /// let enc = Encrypter::from_config(EncryptConfig::new("my-app-secret"));
 ///

@@ -1,4 +1,4 @@
-use crate::HashError;
+use super::HashError;
 
 /// Internal hashing contract implemented by each driver.
 pub(crate) trait HashDriver: Send + Sync + 'static {

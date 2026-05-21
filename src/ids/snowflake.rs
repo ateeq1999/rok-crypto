@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::IdError;
+use super::IdError;
 
 // Epoch: 2020-01-01 00:00:00 UTC
 const DEFAULT_EPOCH_MS: u64 = 1_577_836_800_000;
