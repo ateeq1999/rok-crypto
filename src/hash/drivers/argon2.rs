@@ -19,7 +19,7 @@ impl Argon2Driver {
             self.config.parallelism,
             None,
         )
-        .map_err(|e| HashError::InvalidParams(e.to_string()))?;
+        .map_err(|e| HashError::invalid_params(e.to_string()))?;
         Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
     }
 }
@@ -31,7 +31,7 @@ impl HashDriver for Argon2Driver {
         argon2
             .hash_password(password.as_bytes(), &salt)
             .map(|h| h.to_string())
-            .map_err(|e| HashError::HashFailed(e.to_string()))
+            .map_err(|e| HashError::hash_failed(e.to_string()))
     }
 
     fn verify(&self, password: &str, hash: &str) -> Result<bool, HashError> {
@@ -53,21 +53,9 @@ impl HashDriver for Argon2Driver {
         let mut p = 0u32;
         for (key, val) in parsed.params.iter() {
             match key.as_str() {
-                "m" => {
-                    if let Ok(n) = val.decimal() {
-                        m = n;
-                    }
-                }
-                "t" => {
-                    if let Ok(n) = val.decimal() {
-                        t = n;
-                    }
-                }
-                "p" => {
-                    if let Ok(n) = val.decimal() {
-                        p = n;
-                    }
-                }
+                "m" => if let Ok(n) = val.decimal() { m = n; }
+                "t" => if let Ok(n) = val.decimal() { t = n; }
+                "p" => if let Ok(n) = val.decimal() { p = n; }
                 _ => {}
             }
         }

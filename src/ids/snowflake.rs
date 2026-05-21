@@ -7,19 +7,16 @@ use serde::{Deserialize, Serialize};
 
 use super::IdError;
 
-// Epoch: 2020-01-01 00:00:00 UTC
 const DEFAULT_EPOCH_MS: u64 = 1_577_836_800_000;
 const WORKER_BITS: u8 = 10;
 const SEQUENCE_BITS: u8 = 12;
-const MAX_WORKER: u16 = (1 << WORKER_BITS) - 1; // 1023
-const MAX_SEQUENCE: u16 = (1 << SEQUENCE_BITS) - 1; // 4095
+const MAX_WORKER: u16 = (1 << WORKER_BITS) - 1;
+const MAX_SEQUENCE: u16 = (1 << SEQUENCE_BITS) - 1;
 
 /// Configuration for the Snowflake generator.
 #[derive(Debug, Clone)]
 pub struct SnowflakeConfig {
-    /// Worker ID (0–1023). Set from SNOWFLAKE_WORKER_ID env var or default 0.
     pub worker_id: u16,
-    /// Custom epoch in milliseconds since Unix epoch. Defaults to 2020-01-01.
     pub epoch_ms: u64,
 }
 
@@ -33,6 +30,20 @@ impl Default for SnowflakeConfig {
             worker_id: worker_id & MAX_WORKER,
             epoch_ms: DEFAULT_EPOCH_MS,
         }
+    }
+}
+
+impl SnowflakeConfig {
+    pub fn new(worker_id: u16) -> Self {
+        Self {
+            worker_id: worker_id & MAX_WORKER,
+            epoch_ms: DEFAULT_EPOCH_MS,
+        }
+    }
+
+    pub fn with_epoch(mut self, epoch_ms: u64) -> Self {
+        self.epoch_ms = epoch_ms;
+        self
     }
 }
 
@@ -78,7 +89,6 @@ impl Snowflake {
         if ts == guard.last_ts {
             guard.sequence = (guard.sequence + 1) & MAX_SEQUENCE;
             if guard.sequence == 0 {
-                // Sequence exhausted — spin until the next millisecond
                 while ts <= guard.last_ts {
                     ts = current_ts(config.epoch_ms);
                 }
@@ -98,19 +108,19 @@ impl Snowflake {
         Self(id)
     }
 
-    /// Generate with the default config (reads SNOWFLAKE_WORKER_ID env var once).
-    pub fn new() -> Self {
+    pub fn new(worker_id: u16) -> Self {
         static CFG: OnceLock<SnowflakeConfig> = OnceLock::new();
-        Self::generate(CFG.get_or_init(SnowflakeConfig::default))
+        Self::generate(CFG.get_or_init(|| SnowflakeConfig::new(worker_id)))
     }
 
     pub fn value(&self) -> i64 {
         self.0
     }
 
-    pub fn timestamp_ms(&self, config: &SnowflakeConfig) -> u64 {
+    pub fn timestamp_ms(&self) -> u64 {
         let ts = self.0 >> (WORKER_BITS + SEQUENCE_BITS) as i64;
-        (ts as u64) + config.epoch_ms
+        let epoch = DEFAULT_EPOCH_MS;
+        (ts as u64) + epoch
     }
 
     pub fn worker_id(&self) -> u16 {
@@ -124,7 +134,7 @@ impl Snowflake {
 
 impl Default for Snowflake {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }
 
@@ -157,34 +167,5 @@ impl From<i64> for Snowflake {
 impl From<Snowflake> for i64 {
     fn from(s: Snowflake) -> i64 {
         s.0
-    }
-}
-
-#[cfg(feature = "sqlx-postgres")]
-mod sqlx_impl {
-    use super::Snowflake;
-    use sqlx::{
-        encode::IsNull,
-        error::BoxDynError,
-        postgres::{PgArgumentBuffer, PgTypeInfo, PgValueRef},
-    };
-
-    impl sqlx::Type<sqlx::Postgres> for Snowflake {
-        fn type_info() -> PgTypeInfo {
-            <i64 as sqlx::Type<sqlx::Postgres>>::type_info()
-        }
-    }
-
-    impl<'q> sqlx::Encode<'q, sqlx::Postgres> for Snowflake {
-        fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
-            <i64 as sqlx::Encode<'q, sqlx::Postgres>>::encode_by_ref(&self.0, buf)
-        }
-    }
-
-    impl<'r> sqlx::Decode<'r, sqlx::Postgres> for Snowflake {
-        fn decode(value: PgValueRef<'r>) -> Result<Self, BoxDynError> {
-            let n = <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-            Ok(Self(n))
-        }
     }
 }

@@ -42,7 +42,7 @@ fn encode_base36_fixed(n: u128, length: usize) -> Vec<u8> {
 }
 
 /// A CUID2 identifier — 24-char, SHA-3 fingerprinted, URL-safe.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Cuid2(String);
 
 impl Cuid2 {
@@ -71,8 +71,18 @@ impl Cuid2 {
         Self(format!("{}{}", prefix, String::from_utf8(body).unwrap()))
     }
 
+    pub fn new() -> Self {
+        Self::generate()
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl Default for Cuid2 {
+    fn default() -> Self {
+        Self::generate()
     }
 }
 
@@ -109,34 +119,5 @@ impl FromStr for Cuid2 {
 impl AsRef<str> for Cuid2 {
     fn as_ref(&self) -> &str {
         &self.0
-    }
-}
-
-#[cfg(feature = "sqlx-postgres")]
-mod sqlx_impl {
-    use super::Cuid2;
-    use sqlx::{
-        encode::IsNull,
-        error::BoxDynError,
-        postgres::{PgArgumentBuffer, PgTypeInfo, PgValueRef},
-    };
-
-    impl sqlx::Type<sqlx::Postgres> for Cuid2 {
-        fn type_info() -> PgTypeInfo {
-            <String as sqlx::Type<sqlx::Postgres>>::type_info()
-        }
-    }
-
-    impl<'q> sqlx::Encode<'q, sqlx::Postgres> for Cuid2 {
-        fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
-            <String as sqlx::Encode<'q, sqlx::Postgres>>::encode_by_ref(&self.0, buf)
-        }
-    }
-
-    impl<'r> sqlx::Decode<'r, sqlx::Postgres> for Cuid2 {
-        fn decode(value: PgValueRef<'r>) -> Result<Self, BoxDynError> {
-            let s = <String as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-            Ok(Self(s))
-        }
     }
 }

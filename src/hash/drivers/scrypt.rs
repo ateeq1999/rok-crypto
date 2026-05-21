@@ -19,7 +19,7 @@ impl ScryptDriver {
             self.config.p,
             Params::RECOMMENDED_LEN,
         )
-        .map_err(|e| HashError::InvalidParams(e.to_string()))
+        .map_err(|e| HashError::invalid_params(e.to_string()))
     }
 }
 
@@ -29,7 +29,7 @@ impl HashDriver for ScryptDriver {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Scrypt
             .hash_password_customized(password.as_bytes(), None, None, params, &salt)
-            .map_err(|e| HashError::HashFailed(e.to_string()))?;
+            .map_err(|e| HashError::hash_failed(e.to_string()))?;
         Ok(hash.to_string())
     }
 
@@ -50,21 +50,9 @@ impl HashDriver for ScryptDriver {
         let mut p = 0u32;
         for (key, val) in parsed.params.iter() {
             match key.as_str() {
-                "ln" => {
-                    if let Ok(n) = val.decimal() {
-                        ln = n;
-                    }
-                }
-                "r" => {
-                    if let Ok(n) = val.decimal() {
-                        r = n;
-                    }
-                }
-                "p" => {
-                    if let Ok(n) = val.decimal() {
-                        p = n;
-                    }
-                }
+                "ln" => if let Ok(n) = val.decimal() { ln = n; }
+                "r"  => if let Ok(n) = val.decimal() { r = n; }
+                "p"  => if let Ok(n) = val.decimal() { p = n; }
                 _ => {}
             }
         }

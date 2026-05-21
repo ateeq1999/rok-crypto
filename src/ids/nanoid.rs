@@ -10,9 +10,6 @@ pub const DEFAULT_ALPHABET: &[u8] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
 pub const DEFAULT_SIZE: usize = 21;
 
-/// Generate a NanoID string with custom alphabet and length.
-///
-/// Uses rejection sampling to guarantee uniform distribution.
 pub fn generate_nanoid_custom(alphabet: &[u8], size: usize) -> String {
     assert!(!alphabet.is_empty(), "nanoid: alphabet must not be empty");
     assert!(
@@ -23,7 +20,6 @@ pub fn generate_nanoid_custom(alphabet: &[u8], size: usize) -> String {
     let mut rng = rand::thread_rng();
     let alen = alphabet.len();
 
-    // Smallest bitmask that covers alphabet indices
     let mask = {
         let mut m = 1usize;
         while m < alen {
@@ -52,27 +48,34 @@ pub fn generate_nanoid_custom(alphabet: &[u8], size: usize) -> String {
 }
 
 /// A NanoID — short, URL-safe, configurable-length random identifier.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct NanoId(String);
 
 impl NanoId {
-    /// Generate a 21-char NanoID using the default URL-safe alphabet.
     pub fn generate() -> Self {
         Self(generate_nanoid_custom(DEFAULT_ALPHABET, DEFAULT_SIZE))
     }
 
-    /// Generate a NanoID with a custom size (default alphabet).
+    pub fn new() -> Self {
+        Self::generate()
+    }
+
     pub fn with_size(size: usize) -> Self {
         Self(generate_nanoid_custom(DEFAULT_ALPHABET, size))
     }
 
-    /// Generate a NanoID with a custom alphabet and size.
     pub fn custom(alphabet: &[u8], size: usize) -> Self {
         Self(generate_nanoid_custom(alphabet, size))
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl Default for NanoId {
+    fn default() -> Self {
+        Self::generate()
     }
 }
 
@@ -96,34 +99,5 @@ impl FromStr for NanoId {
 impl AsRef<str> for NanoId {
     fn as_ref(&self) -> &str {
         &self.0
-    }
-}
-
-#[cfg(feature = "sqlx-postgres")]
-mod sqlx_impl {
-    use super::NanoId;
-    use sqlx::{
-        encode::IsNull,
-        error::BoxDynError,
-        postgres::{PgArgumentBuffer, PgTypeInfo, PgValueRef},
-    };
-
-    impl sqlx::Type<sqlx::Postgres> for NanoId {
-        fn type_info() -> PgTypeInfo {
-            <String as sqlx::Type<sqlx::Postgres>>::type_info()
-        }
-    }
-
-    impl<'q> sqlx::Encode<'q, sqlx::Postgres> for NanoId {
-        fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
-            <String as sqlx::Encode<'q, sqlx::Postgres>>::encode_by_ref(&self.0, buf)
-        }
-    }
-
-    impl<'r> sqlx::Decode<'r, sqlx::Postgres> for NanoId {
-        fn decode(value: PgValueRef<'r>) -> Result<Self, BoxDynError> {
-            let s = <String as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-            Ok(Self(s))
-        }
     }
 }

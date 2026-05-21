@@ -18,6 +18,8 @@ use drivers::bcrypt::BcryptDriver;
 #[cfg(feature = "scrypt")]
 use drivers::scrypt::ScryptDriver;
 
+use crate::util::from_env::FromEnv;
+
 /// Password-hashing façade with pluggable drivers.
 ///
 /// Constructed once (usually at startup) and shared via `Arc`.
@@ -38,13 +40,6 @@ pub struct Hasher {
 }
 
 impl Hasher {
-    /// Create a `Hasher` from `config`, selecting and initialising the
-    /// appropriate driver.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `config.driver` is not enabled via the corresponding crate
-    /// feature (e.g., selecting `Driver::Bcrypt` without the `bcrypt` feature).
     pub fn from_config(config: HashConfig) -> Self {
         let inner: Arc<dyn HashDriver> = match config.driver {
             Driver::Argon2 => Arc::new(Argon2Driver::new(config.argon2)),
@@ -60,42 +55,96 @@ impl Hasher {
         Self { inner }
     }
 
-    /// Hash `password` using the configured driver.
-    ///
-    /// The returned string is self-describing (PHC or bcrypt format) and can
-    /// be stored directly in the database.
     pub fn make(&self, password: &str) -> Result<String, HashError> {
         self.inner.hash(password)
     }
 
-    /// Return `true` if `password` matches `hash`.
+    /// Non-blocking hash — runs on `tokio::task::spawn_blocking`.
     ///
-    /// The algorithm and parameters are read from the `hash` string itself,
-    /// so this works even if the driver configuration was changed since the
-    /// hash was created.
+    /// Requires the `tokio` feature.
+    #[cfg(feature = "tokio")]
+    pub async fn make_async(&self, password: String) -> Result<String, HashError> {
+        let this = self.inner.clone();
+        tokio::task::spawn_blocking(move || this.hash(&password))
+            .await
+            .map_err(|e| HashError::HashFailed(e.to_string()))?
+    }
+
     pub fn verify(&self, password: &str, hash: &str) -> Result<bool, HashError> {
         self.inner.verify(password, hash)
     }
 
-    /// Return `true` if `hash` was produced with parameters weaker than the
-    /// current configuration.
-    ///
-    /// Call this after a successful [`verify`](Self::verify) and rehash if
-    /// `true` is returned, then persist the new hash.
+    /// Non-blocking verify — runs on `tokio::task::spawn_blocking`.
+    #[cfg(feature = "tokio")]
+    pub async fn verify_async(&self, password: String, hash: String) -> Result<bool, HashError> {
+        let this = self.inner.clone();
+        tokio::task::spawn_blocking(move || this.verify(&password, &hash))
+            .await
+            .map_err(|e| HashError::HashFailed(e.to_string()))?
+    }
+
     pub fn needs_rehash(&self, hash: &str) -> bool {
         self.inner.needs_rehash(hash)
     }
 
-    // ── AuthFinder helpers ────────────────────────────────────────────────────
-
-    /// Verify `password` against the hash stored on `user`.
     pub fn verify_for<U: AuthFinder>(&self, password: &str, user: &U) -> Result<bool, HashError> {
         self.verify(password, user.get_auth_password())
     }
 
-    /// `true` if the hash stored on `user` should be rehashed.
     pub fn needs_rehash_for<U: AuthFinder>(&self, user: &U) -> bool {
         self.needs_rehash(user.get_auth_password())
+    }
+}
+
+impl FromEnv for Hasher {
+    type Error = String;
+
+    fn from_env() -> Result<Self, Self::Error> {
+        let driver = std::env::var("HASH_DRIVER")
+            .unwrap_or_else(|_| "argon2".into());
+
+        let config = match driver.as_str() {
+            "argon2" => {
+                let mem = std::env::var("HASH_MEMORY_KIB")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(19_456);
+                let iters = std::env::var("HASH_ITERATIONS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(2);
+                let par = std::env::var("HASH_PARALLELISM")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(1);
+                HashConfig::argon2(mem, iters, par)
+            }
+            "bcrypt" => {
+                let cost = std::env::var("HASH_COST")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(12);
+                HashConfig::bcrypt(cost)
+            }
+            "scrypt" => {
+                let log_n = std::env::var("HASH_LOG_N")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(17u8);
+                let r = std::env::var("HASH_R")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(8);
+                let p = std::env::var("HASH_P")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(1);
+                HashConfig::scrypt(log_n, r, p)
+            }
+            _ => return Err(format!("unknown HASH_DRIVER: {}", driver)),
+        };
+
+        Ok(Self::from_config(config))
     }
 }
 

@@ -1,20 +1,20 @@
 [package]
 name = "rok-crypto"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 license = "MIT"
 authors = ["ateeq1999"]
 repository = "https://github.com/ateeq1999/rok-crypto"
 homepage = "https://github.com/ateeq1999/rok-crypto"
-description = "Cryptographic primitives for the Rok ecosystem — encryption, password hashing (Argon2/Bcrypt/Scrypt), and collision-resistant ID generation (CUID2/ULID/UUIDv7/NanoID/Snowflake)"
+description = "Pure cryptographic primitives — encryption, password hashing, ID generation, TOTP, JWT, password policies, and secure random utilities"
 keywords = [
-    "crypto", "encryption", "hashing", "ids", "rok",
+    "crypto", "encryption", "hashing", "ids", "totp", "jwt",
     "cuid2", "ulid", "uuid", "argon2", "bcrypt", "scrypt", "nanoid", "snowflake",
-    "aes-gcm", "hmac",
+    "aes-gcm", "hmac", "password",
 ]
 categories = ["cryptography", "authentication", "data-structures", "web-programming"]
 readme = "README.md"
-exclude = ["docs/", "plan.md", "todo.md", ".github/", "target/"]
+exclude = ["target/"]
 
 [lib]
 name = "rok_crypto"
@@ -33,28 +33,30 @@ uuid-v7     = ["dep:uuid"]
 nanoid      = ["dep:rand"]
 snowflake   = []
 
-# Password hashing — at least one driver required for hash to be useful
+# Password hashing
 hash        = ["argon2"]
 argon2      = ["dep:argon2", "dep:password-hash"]
 bcrypt      = ["dep:bcrypt"]
 scrypt      = ["dep:scrypt", "dep:password-hash"]
-
-# SHA-2 / SHA-3 digest helpers
 sha         = ["dep:sha2", "dep:sha3"]
 
-# AES-256-GCM authenticated encryption + HMAC signing
+# Encryption + signing
 encrypt     = [
     "dep:aes-gcm", "dep:hmac", "dep:base64", "dep:sha2",
     "dep:serde_json", "dep:chrono", "dep:rand",
 ]
 
-# SQLx PostgreSQL type impls for ID types
-sqlx-postgres = ["dep:sqlx", "sqlx/postgres", "sqlx/uuid"]
+# Services
+zeroize         = ["dep:zeroize"]
+totp            = ["dep:hmac", "dep:sha2"]
+jwt             = ["dep:hmac", "dep:base64", "dep:serde_json", "dep:sha2"]
+password-policy = []
+tokio           = ["dep:tokio", "tokio/rt"]
 
-# All features (publish-ready)
+# Convenience bundle
 full = [
     "ids", "snowflake", "hash", "bcrypt", "scrypt", "sha",
-    "encrypt", "sqlx-postgres",
+    "encrypt", "zeroize", "totp", "jwt", "password-policy", "tokio",
 ]
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
@@ -76,7 +78,8 @@ scrypt      = { version = "0.11", features = ["password-hash"], optional = true 
 password-hash = { version = "0.5", features = ["rand_core", "std"], optional = true }
 aes-gcm     = { version = "0.10", optional = true }
 hmac        = { version = "0.12", optional = true }
-sqlx        = { version = "0.8", default-features = false, optional = true }
+zeroize     = { version = "1", features = ["zeroize_derive"], optional = true }
+tokio       = { version = "1", default-features = false, optional = true }
 
 [dev-dependencies]
 serde_json = "1"

@@ -41,10 +41,10 @@ fn seal_produces_unique_tokens() {
 #[test]
 fn open_wrong_token_returns_error() {
     let e = enc();
-    assert_eq!(
+    assert!(matches!(
         e.open("not-a-valid-token"),
-        Err(EncryptError::InvalidFormat)
-    );
+        Err(EncryptError::InvalidFormat(_))
+    ));
 }
 
 #[test]

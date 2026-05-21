@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn snowflake_positive() {
-        let id = Snowflake::new();
+        let id = Snowflake::new(0);
         assert!(id.value() > 0);
     }
 
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn snowflake_roundtrip() {
-        let id = Snowflake::new();
+        let id = Snowflake::new(0);
         let s = id.to_string();
         let parsed: Snowflake = s.parse().unwrap();
         assert_eq!(id, parsed);
