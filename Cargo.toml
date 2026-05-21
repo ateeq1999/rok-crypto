@@ -7,11 +7,7 @@ authors = ["ateeq1999"]
 repository = "https://github.com/ateeq1999/rok-crypto"
 homepage = "https://github.com/ateeq1999/rok-crypto"
 description = "Pure cryptographic primitives — encryption, password hashing, ID generation, TOTP, JWT, password policies, and secure random utilities"
-keywords = [
-    "crypto", "encryption", "hashing", "ids", "totp", "jwt",
-    "cuid2", "ulid", "uuid", "argon2", "bcrypt", "scrypt", "nanoid", "snowflake",
-    "aes-gcm", "hmac", "password",
-]
+keywords = ["crypto", "hashing", "ids", "totp", "jwt"]
 categories = ["cryptography", "authentication", "data-structures", "web-programming"]
 readme = "README.md"
 exclude = ["target/"]
